@@ -39,16 +39,21 @@ public class NodeClientWriter extends Thread {
 		// assume you have a list of nodes in the tracker class and select one randomly. We can use the Tracker class for this purpose
 		
 		// connect to an active chord node - can use the process defined in StaticTracker 
+		Registry registry = Util.tryIPs();
 		
 		// Compute the hash of the node's IP address
+		String hashIp = Hash.hashOf(Util.activeIP).toString();
 		
 		// use the hash to retrieve the ChordNodeInterface remote object from the registry
-		
-		// do: FileManager fm = new FileManager(ChordNodeInterface, StaticTracker.N);
-		
-		// do: boolean succeed = fm.requestWriteToFileFromAnyActiveNode(filename, content);
-					
-		
+		try {
+			ChordNodeInterface node = (ChordNodeInterface) registry.lookup(hashIp);
+			// do: FileManager fm = new FileManager(ChordNodeInterface, StaticTracker.N);
+			FileManager fm = new FileManager(node, StaticTracker.N);
+			// do: boolean succeed = fm.requestWriteToFileFromAnyActiveNode(filename, content);
+			succeed = fm.requestWriteToFileFromAnyActiveNode(filename, content);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public boolean isSucceed() {

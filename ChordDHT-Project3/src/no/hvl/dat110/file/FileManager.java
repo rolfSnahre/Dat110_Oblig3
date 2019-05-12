@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import no.hvl.dat110.node.Message;
@@ -90,14 +91,33 @@ public class FileManager extends Thread {
 		// generate the N replica keyids from the filename
 		
 		// create replicas
+		createReplicaFiles(filename);
 		
 		// findsuccessors for each file replica and save the result (fileID) for each successor 
+		List<BigInteger> fileIDs =  new ArrayList<BigInteger>();
+		
+		for(BigInteger repFile : replicafiles) {
+			ChordNodeInterface chord = chordnode.findSuccessor(repFile);
+			fileIDs.add(chord.getNodeID());
+		}
 		
 		// if we find the successor node of fileID, we can retrieve the message associated with a fileID by calling the getFilesMetadata() of chordnode.
 		
 		// save the message in a list but eliminate duplicated entries. e.g a node may be repeated because it maps more than one replicas to its id. (use checkDuplicateActiveNode)
+
+		Map<BigInteger, Message> filesMeta =  chordnode.getFilesMetadata();
 		
-		return null;	// return value is a Set of type Message		
+		Set<Message> messages = new HashSet<Message>();
+
+		for(BigInteger fileID : fileIDs) {
+			Message msg = filesMeta.get(fileID);
+			if(!checkDuplicateActiveNode(messages, msg)) {
+				messages.add(msg);
+			}
+		}
+			
+		
+		return messages;	// return value is a Set of type Message		
 	}
 	
 	private boolean checkDuplicateActiveNode(Set<Message> activenodesdata, Message nodetocheck) {
@@ -113,73 +133,118 @@ public class FileManager extends Thread {
 	public boolean requestToReadFileFromAnyActiveNode(String filename) throws RemoteException, NotBoundException {
 		
 		// get all the activenodes that have the file (replicas) i.e. requestActiveNodesForFile(String filename)
-			
+		Set<Message> activenodes = requestActiveNodesForFile(filename);
+		
 		// choose any available node
+		Message message = activenodes.iterator().next();
 		
 		// locate the registry and see if the node is still active by retrieving its remote object
+		Registry registry = Util.locateRegistry(message.getNodeIP());
+		
+		ChordNodeInterface node = (ChordNodeInterface) registry.lookup(message.getNodeID().toString());
+		
+		if(node == null) {
+			return false;
+		}
 		
 		// build the operation to be performed - Read and request for votes in existing active node message
+		message.setOptype(OperationType.READ);
+		Operations readO = new Operations(node, message , activenodes); 
 		
 		// set the active nodes holding replica files in the contact node (setActiveNodesForFile)
- 		
-		// set the NodeIP in the message (replace ip with )
+ 		node.setActiveNodesForFile(activenodes);
 		
+		// set the NodeIP in the message (replace ip with )
+		message.setNodeIP(filename);
 		
 		// send a request to a node and get the voters decision
+		boolean accept = node.requestReadOperation(message);
 		
 		// put the decision back in the message
+		message.setAcknowledged(accept);
 		
 		// multicast voters' decision to the rest of the nodes
+		node.multicastVotersDecision(message);
 		
 		// if majority votes
+		if(!accept) {
+			return false;
+		}
 		
 		// acquire lock to CS and also increments localclock
+		node.acquireLock();
 		
 		// perform operation by calling Operations class
+		readO.performOperation();
 		
 		// optional: retrieve content of file on local resource
 		
 		// send message to let replicas release read lock they are holding
+		node.multicastUpdateOrReadReleaseLockOperation(message);
 		
 		// release locks after operations
-		
+		node.releaseLocks();
 			
 			
-		return false;		// change to your final answer
+		return accept;		// change to your final answer
 	}
 	
 	public boolean requestWriteToFileFromAnyActiveNode(String filename, String newcontent) throws RemoteException, NotBoundException {
 		
 		// get all the activenodes that have the file (replicas) i.e. requestActiveNodesForFile(String filename)
+		Set<Message> activenodes = requestActiveNodesForFile(filename);
 		
 		// choose any available node
+		Message message = activenodes.iterator().next();
 		
 		// locate the registry and see if the node is still active by retrieving its remote object
+		Registry registry = Util.locateRegistry(message.getNodeIP());
+		
+		ChordNodeInterface node = (ChordNodeInterface) registry.lookup(message.getNodeID().toString());
+		
+		if(node == null) {
+			return false;
+		}
 		
 		// build the operation to be performed - Read and request for votes in existing active node message
+		message.setOptype(OperationType.READ);
+		Operations writeO = new Operations(node, message , activenodes); 
 		
 		// set the active nodes holding replica files in the contact node (setActiveNodesForFile)
- 		
-		// set the NodeIP in the message (replace ip with )
+ 		node.setActiveNodesForFile(activenodes);
 		
+		// set the NodeIP in the message (replace ip with )
+		message.setNodeIP(filename);
 		
 		// send a request to a node and get the voters decision
+		boolean accept = node.requestWriteOperation(message);
 		
 		// put the decision back in the message
+		message.setAcknowledged(accept);
 		
 		// multicast voters' decision to the rest of the nodes
+		node.multicastVotersDecision(message);
 		
 		// if majority votes
+		if(!accept) {
+			return false;
+		}
 		
 		// acquire lock to CS and also increments localclock
+		node.acquireLock();
 		
 		// perform operation by calling Operations class
+		writeO.performOperation();
 		
-		// update replicas and let replicas release CS lock they are holding
+		// optional: retrieve content of file on local resource
+		
+		// send message to let replicas release read lock they are holding
+		node.multicastUpdateOrReadReleaseLockOperation(message);
 		
 		// release locks after operations
+		node.releaseLocks();	
 		
-		return false;  // change to your final answer
+		return accept;  // change to your final answer
 
 	}
 
