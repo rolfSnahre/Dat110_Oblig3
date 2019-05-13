@@ -279,6 +279,7 @@ public class Node extends UnicastRemoteObject implements ChordNodeInterface {
 	public void releaseLocks() throws RemoteException {
 		CS_BUSY = false;
 		WANTS_TO_ENTER_CS = false;
+		incrementclock();
 	}
 	
 	@Override
@@ -323,7 +324,7 @@ public class Node extends UnicastRemoteObject implements ChordNodeInterface {
 		for(int i = 0; i < numMessages; i++ ) {
 			int index = r.nextInt(tempAN.size());
 			Message activeNodeM = tempAN.get(index);
-			tempAN.remove(index);
+			tempAN.remove(activeNodeM);
 		
 			String nodeip = activeNodeM.getNodeIP();
 			String nodeid = activeNodeM.getNodeID().toString();
@@ -372,6 +373,7 @@ public class Node extends UnicastRemoteObject implements ChordNodeInterface {
 			acquireLock();
 			
 			m.setAcknowledged(true);
+			return m;
 		}
 		
 		
@@ -380,6 +382,7 @@ public class Node extends UnicastRemoteObject implements ChordNodeInterface {
 		 */
 		if(CS_BUSY) {
 			m.setAcknowledged(false);
+			return m;
 		}
 		
 		
@@ -454,24 +457,32 @@ public class Node extends UnicastRemoteObject implements ChordNodeInterface {
 		// if this is a write operation, multicast the update to the rest of the replicas (voters)
 		// otherwise if this is a READ operation multicast releaselocks to the replicas (voters)
 		
-		for(Message activeNodeM : activenodesforfile) {
+		Operations op = new Operations(this, message, activenodesforfile);
 		
-			String nodeip = activeNodeM.getNodeIP();
-			String nodeid = activeNodeM.getNodeID().toString();
-			try {
-				Registry registry = Util.locateRegistry(nodeip);		// locate the registry and see if the node is still active
-				ChordNodeInterface node = (ChordNodeInterface) registry.lookup(nodeid);
-				
-				if(message.getOptype() == OperationType.WRITE) {
-					node.onReceivedUpdateOperation(message);
-				}else {
-					node.releaseLocks();
-				}
-							
-			} catch (NotBoundException e) {
-				e.printStackTrace();
-			}
+		if(message.getOptype() == OperationType.WRITE) {
+			op.multicastOperationToReplicas(message);
+		}else {
+			op.multicastReadReleaseLocks();
 		}
+		
+//		for(Message activeNodeM : activenodesforfile) {
+//		
+//			String nodeip = activeNodeM.getNodeIP();
+//			String nodeid = activeNodeM.getNodeID().toString();
+//			try {
+//				Registry registry = Util.locateRegistry(nodeip);		// locate the registry and see if the node is still active
+//				ChordNodeInterface node = (ChordNodeInterface) registry.lookup(nodeid);
+//				
+//				if(message.getOptype() == OperationType.WRITE) {
+//					node.onReceivedUpdateOperation(message);
+//				}else {
+//					node.releaseLocks();
+//				}
+//							
+//			} catch (NotBoundException e) {
+//				e.printStackTrace();
+//			}
+//		}
 	}	
 	
 	@Override
