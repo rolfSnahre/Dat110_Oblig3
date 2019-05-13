@@ -103,7 +103,7 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		
 		// multicast read request to start the voting to N/2 + 1 replicas (majority) - optimal. You could as well send to all the replicas that have the file
 		
-		Boolean acknowledged = multicastMessage(message, N);
+		Boolean acknowledged = multicastMessage(message, N-1);
 		
 		return acknowledged;  // change to the election result
 	}
@@ -117,7 +117,7 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		WANTS_TO_ENTER_CS = true;
 		
 		// multicast read request to start the voting to N/2 + 1 replicas (majority) - optimal. You could as well send to all the replicas that have the file
-		Boolean acknowledged = multicastMessage(message, N);
+		Boolean acknowledged = multicastMessage(message, N-1);
 		
 		
 		return acknowledged;  // change to the election result
@@ -140,17 +140,16 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		ProcessInterface p;
 		
 		Random r = new Random();
-		List<String> tempRep = replicas.subList(0, replicas.size());
 		
 		int index;
 		
 		Message m;
 		
-		for(int i = 0; i < (n/2+1); i++) {
+		for(int i = 0; (i < n && !replicas.isEmpty()); i++) {
 			
-			index = r.nextInt(tempRep.size());
-			stub = tempRep.get(index);
-			tempRep.remove(r);
+			index = r.nextInt(replicas.size());
+			stub = replicas.get(index);
+			replicas.remove(stub);
 			
 			try {
 				p = Util.registryHandle(stub);
@@ -166,7 +165,8 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 			}
 		}
 		
-		replicas.add(this.procStubname);
+		
+		replicas = Util.getProcessReplicas();
 		
 		Boolean acknowledged = majorityAcknowledged();
 		queueACK = new ArrayList<Message>();
@@ -198,6 +198,7 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 			acquireLock();
 			
 			m.setAcknowledged(true);
+			return m;
 		}
 		
 		
@@ -206,6 +207,7 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		 */
 		if(CS_BUSY) {
 			m.setAcknowledged(false);
+			return m;
 		}
 		
 		
@@ -261,7 +263,7 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 			return;
 		}
 		
-		new Operations(this, message).write(getLocalfile());
+		new Operations(this, message).performOperation();
 		
 		releaseLocks();
 		
@@ -278,23 +280,29 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		
 		List<String> replicas = Util.getProcessReplicas();
 		
-		Boolean decision = message.isAcknowledged();
+		Operations op = new Operations(this, message);
 		
-		for(int i=0; i<replicas.size(); i++) {
-			
-			String stub = replicas.get(i);
-			try {
-				ProcessInterface p = Util.registryHandle(stub);
-				if(optype == OperationType.WRITE) {
-					p.onReceivedUpdateOperation(message);
-				}else {
-					p.releaseLocks();
-				}
-			} catch (NotBoundException e) {
-
-				e.printStackTrace();
-			}
-		}	
+		if(optype == OperationType.WRITE) {
+			op.multicastOperationToReplicas(message);
+		}else {
+			op.multicastReadReleaseLocks();
+		}
+		
+//		for(int i=0; i<replicas.size(); i++) {
+//			
+//			String stub = replicas.get(i);
+//			try {
+//				ProcessInterface p = Util.registryHandle(stub);
+//				if(optype == OperationType.WRITE) {
+//					p.onReceivedUpdateOperation(message);
+//				}else {
+//					p.releaseLocks();
+//				}
+//			} catch (NotBoundException e) {
+//
+//				e.printStackTrace();
+//			}
+//		}	
 		
 	}	
 	
@@ -304,7 +312,7 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		
 		List<String> replicas = Util.getProcessReplicas();
 		
-		Boolean decision = message.isAcknowledged();
+		Operations op = new Operations(this, message);
 		
 		for(int i=0; i<replicas.size(); i++) {
 			
