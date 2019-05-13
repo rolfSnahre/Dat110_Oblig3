@@ -278,8 +278,6 @@ public class MutexProcess extends UnicastRemoteObject implements ProcessInterfac
 		
 		OperationType optype = message.getOptype();
 		
-		List<String> replicas = Util.getProcessReplicas();
-		
 		Operations op = new Operations(this, message);
 		
 		if(optype == OperationType.WRITE) {
